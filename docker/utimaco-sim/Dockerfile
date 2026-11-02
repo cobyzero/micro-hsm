@@ -32,16 +32,16 @@ RUN mkdir -p /opt/utimaco/sim5_linux \
              /exported-keys
 
 # 1. Copiar el Simulador Oficial Utimaco (bl_sim5 + memoria FLASH/NVRAM/SDRAM/MK)
-COPY ext/u.trust-GP-HSM-Simulator_v6.6.0.0/Software/Linux/Simulator/sim5_linux/ /opt/utimaco/sim5_linux/
+COPY libs/Software/Linux/Simulator/sim5_linux/ /opt/utimaco/sim5_linux/
 
 # 2. Copiar las herramientas oficiales de Administración Utimaco (csadm, p11tool2, cxitool, ADMIN.key)
-COPY ext/u.trust-GP-HSM-Simulator_v6.6.0.0/Software/Linux/Administration/csadm /usr/local/bin/csadm
-COPY ext/u.trust-GP-HSM-Simulator_v6.6.0.0/Software/Linux/Administration/p11tool2 /usr/local/bin/p11tool2
-COPY ext/u.trust-GP-HSM-Simulator_v6.6.0.0/Software/Linux/Administration/cxitool /usr/local/bin/cxitool
-COPY ext/u.trust-GP-HSM-Simulator_v6.6.0.0/Software/Linux/Administration/key/ /opt/utimaco/admin/key/
+COPY libs/Software/Linux/Administration/csadm /usr/local/bin/csadm
+COPY libs/Software/Linux/Administration/p11tool2 /usr/local/bin/p11tool2
+COPY libs/Software/Linux/Administration/cxitool /usr/local/bin/cxitool
+COPY libs/Software/Linux/Administration/key/ /opt/utimaco/admin/key/
 
 # 3. Copiar el Driver Oficial PKCS#11 R3 de Utimaco (libcs_pkcs11_R3.so)
-COPY ext/u.trust-GP-HSM-Simulator_v6.6.0.0/Software/Linux/Crypto_APIs/PKCS11_R3/lib/libcs_pkcs11_R3.so /usr/lib/utimaco/libcs_pkcs11_R3.so
+COPY libs/Software/Linux/Crypto_APIs/PKCS11_R3/lib/libcs_pkcs11_R3.so /usr/lib/utimaco/libcs_pkcs11_R3.so
 
 # 4. Copiar configuración PKCS#11 R3 y script de arranque/aprovisionamiento Fase 0
 COPY docker/utimaco-sim/cs_pkcs11_R3.cfg /etc/utimaco/cs_pkcs11_R3.cfg
