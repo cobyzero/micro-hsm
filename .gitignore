@@ -5,7 +5,7 @@
 # Compiled binaries and target directory
 target/
 *.class
-*.jar
+ 
 *.war
 *.ear
 
