@@ -10,6 +10,8 @@ import javax.crypto.Cipher;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.OAEPParameterSpec;
 import javax.crypto.spec.PSource;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.spec.MGF1ParameterSpec;
@@ -28,6 +30,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * semántica de validación, traducción ISO 9564 Formato 4 y limpieza de memoria (zeroization).
  */
 public abstract class AbstractJceHsmAdapter implements HsmCryptoOperations {
+
+    private static final Logger log = LoggerFactory.getLogger(AbstractJceHsmAdapter.class);
 
     protected final HsmProperties properties;
     private final Instant keyInitializedAt = Instant.now();
@@ -198,19 +202,32 @@ public abstract class AbstractJceHsmAdapter implements HsmCryptoOperations {
         }
 
         try {
-            Cipher rsaCipher = (getJceProviderName() != null)
-                    ? Cipher.getInstance("RSA/ECB/OAEPPadding", getJceProviderName())
-                    : Cipher.getInstance("RSA/ECB/OAEPPadding");
-
+            Cipher rsaCipher;
             OAEPParameterSpec oaepParams = new OAEPParameterSpec(
                     "SHA-256",
                     "MGF1",
                     MGF1ParameterSpec.SHA256,
                     PSource.PSpecified.DEFAULT
             );
-            rsaCipher.init(Cipher.DECRYPT_MODE, resolveRsaPrivateKey(), oaepParams);
+
+            if (getJceProviderName() != null) {
+                try {
+                    rsaCipher = Cipher.getInstance("RSA/ECB/OAEPPadding", getJceProviderName());
+                    rsaCipher.init(Cipher.DECRYPT_MODE, resolveRsaPrivateKey(), oaepParams);
+                } catch (Exception exTransform) {
+                    log.debug("[HSM-RSA] Intento con RSA/ECB/OAEPPadding falló ({}), reintentando con RSA/ECB/OAEPWithSHA-256AndMGF1Padding...", exTransform.getMessage());
+                    rsaCipher = Cipher.getInstance("RSA/ECB/OAEPWithSHA-256AndMGF1Padding", getJceProviderName());
+                    rsaCipher.init(Cipher.DECRYPT_MODE, resolveRsaPrivateKey());
+                }
+            } else {
+                rsaCipher = Cipher.getInstance("RSA/ECB/OAEPPadding");
+                rsaCipher.init(Cipher.DECRYPT_MODE, resolveRsaPrivateKey(), oaepParams);
+            }
+
             return rsaCipher.doFinal(cipherBytes);
         } catch (Exception e) {
+            log.error("[HSM-RSA] Fallo al descifrar criptograma RSA-OAEP (longitud bytes={}, provider={}): {}",
+                    cipherBytes.length, getJceProviderName(), e.getMessage(), e);
             throw new HsmOperationException(HsmErrorCode.HSM_RSA_DECRYPTION_FAILED, e);
         }
     }

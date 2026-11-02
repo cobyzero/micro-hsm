@@ -32,8 +32,9 @@ public class GlobalExceptionHandler {
         HsmErrorCode errorCode = ex.getErrorCode();
         HttpStatus status = errorCode.getHttpStatus();
 
-        log.warn("[HSM-ERROR] code={} status={} path={} msg={}",
-                errorCode.getCode(), status.value(), request.getRequestURI(), ex.getMessage());
+        log.warn("[HSM-ERROR] code={} status={} path={} msg={} cause={}",
+                errorCode.getCode(), status.value(), request.getRequestURI(), ex.getMessage(),
+                ex.getCause() != null ? ex.getCause().toString() : "none");
 
         ApiErrorResponse body = new ApiErrorResponse(
                 errorCode.getCode(),

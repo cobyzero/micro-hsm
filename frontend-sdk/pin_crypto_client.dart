@@ -158,6 +158,35 @@ class PinCryptoFlutterClient {
     }
   }
 
+  /// Prepara el Map JSON listo para enviar a `POST /api/v1/account/verify-pin`
+  /// garantizando que el arreglo de PIN (`pinDigits`) quede en cero en memoria RAM
+  /// inmediatamente después de cifrar.
+  static Map<String, dynamic> prepareVerifyPinRequestPayload({
+    required String userId,
+    required String panOrAccountNumber,
+    required Uint8List pinDigits,
+    required String publicKeyPem,
+    String? storedPinBlockUnderLmk,
+  }) {
+    try {
+      final String encryptedPin = encryptPinBlockE2E(
+        pinDigits: pinDigits,
+        panOrAccountId: panOrAccountNumber,
+        hsmPublicKeyPem: publicKeyPem,
+      );
+
+      return <String, dynamic>{
+        'userId': userId,
+        'panOrAccountNumber': panOrAccountNumber,
+        'encryptedPin': encryptedPin,
+        if (storedPinBlockUnderLmk != null)
+          'storedPinBlockUnderLmk': storedPinBlockUnderLmk,
+      };
+    } finally {
+      zeroize(pinDigits);
+    }
+  }
+
   /// Implementación RFC 8017 de RSAES-OAEP-ENCRYPT con SHA-256 tanto para el
   /// Hash del Label como para MGF1(SHA-256), compatible 100% con JCE/PKCS#11:
   /// `RSA/ECB/OAEPWithSHA-256AndMGF1Padding`.
