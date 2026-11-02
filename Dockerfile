@@ -23,8 +23,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && mkdir -p /etc/utimaco /usr/lib/utimaco
 
 # Copiar el driver oficial PKCS#11 R3 de Utimaco v6.6.0.0 y el proveedor JCE oficial
-COPY ext/u.trust-GP-HSM-Simulator_v6.6.0.0/Software/Linux/Crypto_APIs/PKCS11_R3/lib/libcs_pkcs11_R3.so /usr/lib/utimaco/libcs_pkcs11_R3.so
-COPY ext/u.trust-GP-HSM-Simulator_v6.6.0.0/Software/Linux/Crypto_APIs/JCE/lib/securityserver-jce.jar /usr/lib/utimaco/securityserver-jce.jar
+COPY libs/Software/Linux/Crypto_APIs/PKCS11_R3/lib/libcs_pkcs11_R3.so /usr/lib/utimaco/libcs_pkcs11_R3.so
+COPY libs/Software/Linux/Crypto_APIs/JCE/lib/securityserver-jce.jar /usr/lib/utimaco/securityserver-jce.jar
 COPY docker/utimaco-sim/cs_pkcs11_R3.cfg /etc/utimaco/cs_pkcs11_R3.cfg
 COPY --from=build /app/target/micro-hsm-1.0.0.jar /app/micro-hsm.jar
 
