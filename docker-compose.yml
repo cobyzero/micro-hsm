@@ -1,7 +1,7 @@
 services:
   # ============================================================================
   # FASE 0: Simulador Oficial Utimaco SecurityServer / PaymentServer v6.6.0.0
-  # Construido directamente desde ext/u.trust-GP-HSM-Simulator_v6.6.0.0
+  # Construido directamente desde libs/Software/Linux/Simulator/sim5_linux
   # (bl_sim5 + csadm + p11tool2 + libcs_pkcs11_R3.so)
   # ============================================================================
   utimaco-simulator:
@@ -12,7 +12,7 @@ services:
     container_name: utimaco-hsm-simulator
     hostname: utimaco-sim
     ports:
-      - "3001:3001"   # Puerto oficial Utimaco Simulator (3001@utimaco-sim)
+      - "${UTIMACO_PORT:-3001}:3001"   # Puerto oficial Utimaco Simulator (3001@utimaco-sim)
     environment:
       - CRYPTOSERVER=3001@127.0.0.1
       - HSM_SLOT_ID=${HSM_SLOT_ID:-0}
@@ -23,6 +23,12 @@ services:
     volumes:
       - utimaco-devices:/opt/utimaco/sim5_linux/devices
       - ./docker/utimaco-sim/exported-keys:/exported-keys
+    healthcheck:
+      test: ["CMD-SHELL", "/usr/local/bin/csadm Dev=3001@127.0.0.1 GetState || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
     restart: unless-stopped
 
   # ============================================================================
@@ -35,21 +41,28 @@ services:
       dockerfile: Dockerfile
     container_name: micro-hsm-service
     ports:
-      - "8080:8080"
+      - "${PORT:-8080}:8080"
     environment:
       - HSM_MODE=PKCS11
       - HSM_HOST=utimaco-sim
       - HSM_PORT=3001
       - HSM_DEVICE=3001@utimaco-sim
-      - HSM_SLOT_ID=0
-      - HSM_CRYPTO_OFFICER_PIN=12345678
+      - HSM_SLOT_ID=${HSM_SLOT_ID:-0}
+      - HSM_CRYPTO_OFFICER_PIN=${HSM_CRYPTO_OFFICER_PIN:-12345678}
       - HSM_PKCS11_LIBRARY=/usr/lib/utimaco/libcs_pkcs11_R3.so
-      - HSM_RSA_KEY_ALIAS=PIN_E2E_RSA_2048
-      - HSM_LMK_KEY_ALIAS=LMK_PIN_AES_128
+      - HSM_RSA_KEY_ALIAS=${HSM_RSA_KEY_LABEL:-PIN_E2E_RSA_2048}
+      - HSM_LMK_KEY_ALIAS=${HSM_LMK_KEY_LABEL:-LMK_PIN_AES_128}
     volumes:
       - ./docker/utimaco-sim/exported-keys:/exported-keys:ro
     depends_on:
-      - utimaco-simulator
+      utimaco-simulator:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/actuator/health | grep -q 'UP' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 25s
     restart: unless-stopped
 
 volumes:

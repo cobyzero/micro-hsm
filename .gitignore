@@ -43,12 +43,13 @@ docker/utimaco-sim/exported-keys/*
 exported-keys/*
 !exported-keys/.gitkeep
 
-# Utimaco devices runtime memory persistence (NVRAM/SDRAM/FLASH volatile files)
+# Volatile simulator runtime files created on container launch (preserve original factory images in libs)
 docker/utimaco-sim/devices/
-devices/
+*.tmp
+*.log
 
-# Note: The binaries under ext/u.trust-GP-HSM-Simulator_v6.6.0.0/ are REQUIRED
+# Note: The binaries and initial flash files under libs/Software/Linux/ are REQUIRED
 # by docker/utimaco-sim/Dockerfile to build the Utimaco Simulator image.
-# Do NOT ignore the Linux simulator binaries (bl_sim5, csadm, p11tool2, libcs_pkcs11_R3.so).
+!libs/Software/Linux/Simulator/sim5_linux/devices/
 
 /ext
