@@ -9,12 +9,17 @@ services:
     build:
       context: .
       dockerfile: docker/utimaco-sim/Dockerfile
+      args:
+        SimulatorPort: 3015
     container_name: utimaco-hsm-simulator
     hostname: utimaco-sim
+    tty: true
+    stop_signal: SIGINT
     ports:
-      - "${UTIMACO_PORT:-3001}:3001"   # Puerto oficial Utimaco Simulator (3001@utimaco-sim)
+      - "${UTIMACO_PORT:-3015}:3015"   # Puerto Utimaco Simulator (3015@utimaco-sim)
     environment:
-      - CRYPTOSERVER=3001@127.0.0.1
+      - SDK_PORT=3015
+      - CRYPTOSERVER=3015@127.0.0.1
       - HSM_SLOT_ID=${HSM_SLOT_ID:-0}
       - HSM_SO_PIN=${HSM_SO_PIN:-12345678}
       - HSM_CRYPTO_OFFICER_PIN=${HSM_CRYPTO_OFFICER_PIN:-12345678}
@@ -24,7 +29,7 @@ services:
       - utimaco-devices:/opt/utimaco/sim5_linux/devices
       - ./docker/utimaco-sim/exported-keys:/exported-keys
     healthcheck:
-      test: ["CMD-SHELL", "/usr/local/bin/csadm Dev=3001@127.0.0.1 GetState || exit 1"]
+      test: ["CMD-SHELL", "/usr/local/bin/csadm Dev=3015@127.0.0.1 GetState || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -45,8 +50,8 @@ services:
     environment:
       - HSM_MODE=PKCS11
       - HSM_HOST=utimaco-sim
-      - HSM_PORT=3001
-      - HSM_DEVICE=3001@utimaco-sim
+      - HSM_PORT=3015
+      - HSM_DEVICE=3015@utimaco-sim
       - HSM_SLOT_ID=${HSM_SLOT_ID:-0}
       - HSM_CRYPTO_OFFICER_PIN=${HSM_CRYPTO_OFFICER_PIN:-12345678}
       - HSM_PKCS11_LIBRARY=/usr/lib/utimaco/libcs_pkcs11_R3.so

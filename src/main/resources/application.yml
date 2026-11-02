@@ -13,8 +13,8 @@ server:
 hsm:
   mode: ${HSM_MODE:PKCS11}
   host: ${HSM_HOST:utimaco-sim}
-  port: ${HSM_PORT:3001}
-  device: ${HSM_DEVICE:3001@utimaco-sim}
+  port: ${HSM_PORT:3015}
+  device: ${HSM_DEVICE:3015@utimaco-sim}
   slot-id: ${HSM_SLOT_ID:0}
   crypto-officer-pin: ${HSM_CRYPTO_OFFICER_PIN:12345678}
   pkcs11-library: ${HSM_PKCS11_LIBRARY:/usr/lib/utimaco/libcs_pkcs11_R3.so}

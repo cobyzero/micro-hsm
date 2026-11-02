@@ -251,7 +251,7 @@ El proyecto ya integra el paquete oficial de Utimaco ubicado en `ext/u.trust-GP-
 ```bash
 docker compose up --build
 ```
-- El contenedor `utimaco-hsm-simulator` levanta `bl_sim5` en el puerto `3001`, inicializa el **Slot 0**, crea las llaves `PIN_E2E_RSA_2048` y `LMK_PIN_AES_128`, y exporta la llave pública en `docker/utimaco-sim/exported-keys/pin_e2e_rsa_pub.pem`.
+- El contenedor `utimaco-hsm-simulator` levanta `bl_sim5` en el puerto `3015`, inicializa el **Slot 0**, crea las llaves `PIN_E2E_RSA_2048` y `LMK_PIN_AES_128`, y exporta la llave pública en `docker/utimaco-sim/exported-keys/pin_e2e_rsa_pub.pem`.
 - El contenedor `micro-hsm-service` levanta en `http://localhost:8080` conectado por `PKCS11` al simulador.
 
 ### Opción B: Ejecutar pruebas de integración y desarrollo rápido sin Docker

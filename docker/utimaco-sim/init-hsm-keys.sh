@@ -4,14 +4,15 @@ set -euo pipefail
 # ==============================================================================
 # FASE 0: Arranque del Simulador Oficial Utimaco (bl_sim5 v6.6.0.0) e
 # inicialización de usuarios PKCS#11 y llaves transaccionales:
-#   1. Levanta bl_sim5 en el puerto 3001.
+#   1. Levanta bl_sim5 en el puerto $SDK_PORT (por defecto 3015).
 #   2. Autentica con csadm y ADMIN.key de fábrica de Utimaco.
 #   3. Inicializa el Slot 0 con p11tool2 (SO_0000 y USR_0000 / Crypto Officer).
 #   4. Genera el par RSA-2048 (PIN_E2E_RSA_2048) y la LMK AES-128 (LMK_PIN_AES_128).
 #   5. Exporta la Llave Pública RSA en formato X.509 / PEM en /exported-keys.
 # ==============================================================================
 
-export CRYPTOSERVER="${CRYPTOSERVER:-3001@127.0.0.1}"
+export SDK_PORT="${SDK_PORT:-3015}"
+export CRYPTOSERVER="${CRYPTOSERVER:-${SDK_PORT}@127.0.0.1}"
 export CS_PKCS11_R3_CFG="${CS_PKCS11_R3_CFG:-/etc/utimaco/cs_pkcs11_R3.cfg}"
 
 PKCS11_MODULE="/usr/lib/utimaco/libcs_pkcs11_R3.so"
@@ -25,8 +26,8 @@ EXPORT_DIR="/exported-keys"
 
 mkdir -p "$EXPORT_DIR"
 
-# Crear un archivo cs_pkcs11_R3.cfg local para el contenedor del simulador apuntando a 3001@127.0.0.1
-cat << 'EOF' > /etc/utimaco/cs_pkcs11_R3_local.cfg
+# Crear un archivo cs_pkcs11_R3.cfg local para el contenedor del simulador apuntando a $CRYPTOSERVER
+cat << EOF > /etc/utimaco/cs_pkcs11_R3_local.cfg
 [Global]
 Logging = 1
 Logpath = /tmp
@@ -42,14 +43,21 @@ CommandTimeout = 60000
 KeysExternal = false
 
 [HSMCluster]
-Devices = 3001@127.0.0.1
+Devices = ${CRYPTOSERVER}
 EOF
 export CS_PKCS11_R3_CFG=/etc/utimaco/cs_pkcs11_R3_local.cfg
 
 echo "[UTIMACO-SIM] Iniciando demonio oficial Utimaco SecurityServer Simulator v6.6.0.0 (bl_sim5)..."
 cd /opt/utimaco/sim5_linux/bin
-./bl_sim5 -h -o &
+if [ "$#" -gt 0 ]; then
+    ./bl_sim5 "$@" &
+else
+    ./bl_sim5 -o -h &
+fi
 SIM_PID=$!
+
+# Reenviar SIGINT/SIGTERM limpiamente a bl_sim5 (según STOPSIGNAL SIGINT de la guía oficial Utimaco)
+trap 'echo "[UTIMACO-SIM] Deteniendo bl_sim5 (SIGINT)..."; kill -SIGINT "$SIM_PID" 2>/dev/null || true; wait "$SIM_PID" 2>/dev/null || true; exit 0' SIGINT SIGTERM
 
 # Esperar a que el simulador Utimaco responda al comando oficial csadm GetState
 echo "[UTIMACO-SIM] Esperando a que el HSM responda en $CRYPTOSERVER..."
@@ -110,5 +118,5 @@ else
     echo "[UTIMACO-SIM] El Slot 0 y las llaves ($RSA_LABEL / $LMK_LABEL) ya están inicializados en la NVRAM del simulador."
 fi
 
-echo "[UTIMACO-SIM] Simulador Oficial Utimaco v6.6.0.0 listo y escuchando en el puerto 3001."
+echo "[UTIMACO-SIM] Simulador Oficial Utimaco v6.6.0.0 listo y escuchando en el puerto ${SDK_PORT}."
 wait "$SIM_PID"

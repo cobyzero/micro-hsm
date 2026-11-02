@@ -34,7 +34,7 @@ import java.util.Base64;
  *
  * Configuración en Producción vía Variables de Entorno (Cero Refactorización):
  *   - HSM_MODE=PKCS11
- *   - HSM_DEVICE=3001@10.20.30.40
+ *   - HSM_DEVICE=3015@10.20.30.40
  *   - HSM_SLOT_ID=0
  *   - HSM_CRYPTO_OFFICER_PIN=<PIN_CO_PRODUCCION>
  *   - HSM_PKCS11_LIBRARY=/usr/lib/utimaco/libcs_pkcs11_R3.so

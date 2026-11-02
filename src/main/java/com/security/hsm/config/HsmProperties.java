@@ -29,14 +29,14 @@ public class HsmProperties {
     private String host = "127.0.0.1";
 
     /**
-     * Puerto TCP del Utimaco PaymentServer (por defecto 3001).
+     * Puerto TCP del Utimaco PaymentServer (por defecto 3015).
      */
-    private int port = 3001;
+    private int port = 3015;
 
     /**
-     * Cadena de dispositivo Utimaco en formato Puerto@IP (ej. 3001@127.0.0.1).
+     * Cadena de dispositivo Utimaco en formato Puerto@IP (ej. 3015@127.0.0.1).
      */
-    private String device = "3001@127.0.0.1";
+    private String device = "3015@127.0.0.1";
 
     /**
      * Slot ID del HSM donde residen las llaves transaccionales.

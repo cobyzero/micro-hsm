@@ -7,9 +7,11 @@
 # ==============================================================================
 FROM --platform=linux/amd64 ubuntu:22.04
 
+LABEL version="6.6.0.0"
 LABEL maintainer="Security Architecture Team"
 LABEL description="Official Utimaco HSM Simulator v6.6.0.0 (bl_sim5 + PKCS#11 R3)"
 
+ARG SimulatorPort=3015
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Habilitar arquitectura i386 (necesaria para el binario bl_sim5 de 32-bits de Utimaco)
@@ -55,10 +57,13 @@ RUN chmod +x /opt/utimaco/sim5_linux/bin/bl_sim5 \
              /usr/lib/utimaco/libcs_pkcs11_R3.so \
              /usr/local/bin/init-hsm-keys.sh
 
-ENV CRYPTOSERVER=3001@127.0.0.1
+ENV SDK_PORT=$SimulatorPort
+ENV CRYPTOSERVER=${SimulatorPort}@127.0.0.1
 ENV CS_PKCS11_R3_CFG=/etc/utimaco/cs_pkcs11_R3.cfg
 
 WORKDIR /opt/utimaco/sim5_linux/bin
-EXPOSE 3001 3002
+EXPOSE $SimulatorPort 3016
+STOPSIGNAL SIGINT
 
 ENTRYPOINT ["/usr/local/bin/init-hsm-keys.sh"]
+CMD ["-o", "-h"]
