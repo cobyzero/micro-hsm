@@ -79,8 +79,14 @@ done
 if ! pkcs11-tool --module "$PKCS11_MODULE" --slot 0 --type cert --list-objects 2>/dev/null | grep -q "$RSA_LABEL" || [ ! -s "$EXPORT_DIR/pin_e2e_rsa_pub.pem" ]; then
     echo "[UTIMACO-SIM] Inicializando Slot 0 con herramientas oficiales Utimaco (csadm + p11tool2 usando $ADMIN_KEY)..."
 
-    # Limpiar usuarios previos del Slot 0 si existieran (según SecurityServer_PKCS11_R3_DevGuide.pdf pág. 57)
-    csadm Dev="$CRYPTOSERVER" LogonSign="ADMIN,$ADMIN_KEY" DeleteUser=USR_0000 DeleteUser=SO_0000 >/dev/null 2>&1 || true
+    # Mostrar usuarios existentes y limpiar usuarios previos de forma individual
+    # (según SecurityServer_PKCS11_R3_DevGuide.pdf pág. 57) para asegurar idempotencia
+    echo "[UTIMACO-SIM] Usuarios detectados en el HSM antes de inicializar:"
+    csadm Dev="$CRYPTOSERVER" ListUser || true
+
+    csadm Dev="$CRYPTOSERVER" LogonSign="ADMIN,$ADMIN_KEY" DeleteUser=USR_0000 >/dev/null 2>&1 || true
+    csadm Dev="$CRYPTOSERVER" LogonSign="ADMIN,$ADMIN_KEY" DeleteUser=SO_0000 >/dev/null 2>&1 || true
+    p11tool2 Slot=0 Login="ADMIN,$ADMIN_KEY" DeleteSO >/dev/null 2>&1 || true
 
     # Paso 1 (Pág. 54): Crear Security Officer (SO_0000) con PIN inicial temporal 00000000 (queda en estado I[1])
     p11tool2 Slot=0 Login="ADMIN,$ADMIN_KEY" Force=1 Label="$TOKEN_LABEL" InitToken=00000000
