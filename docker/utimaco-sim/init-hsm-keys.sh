@@ -16,7 +16,12 @@ export CRYPTOSERVER="${CRYPTOSERVER:-${SDK_PORT}@127.0.0.1}"
 export CS_PKCS11_R3_CFG="${CS_PKCS11_R3_CFG:-/etc/utimaco/cs_pkcs11_R3.cfg}"
 
 PKCS11_MODULE="/usr/lib/utimaco/libcs_pkcs11_R3.so"
-ADMIN_KEY="/opt/utimaco/admin/key/ADMIN.key"
+# En el simulador Utimaco v6.6.0.0 (bl_sim5), el usuario ADMIN viene preconfigurado en FLASHFILE
+# con la llave RSA-2048 ADMIN_SIM.key (mientras que ADMIN.key es para hardware físico).
+ADMIN_KEY="/opt/utimaco/admin/key/ADMIN_SIM.key"
+if [ ! -f "$ADMIN_KEY" ]; then
+    ADMIN_KEY="/opt/utimaco/admin/key/ADMIN.key"
+fi
 SO_PIN="${HSM_SO_PIN:-12345678}"
 CO_PIN="${HSM_CRYPTO_OFFICER_PIN:-12345678}"
 TOKEN_LABEL="UTIMACO_PAYMENT_SLOT"
@@ -70,20 +75,24 @@ for i in {1..30}; do
     sleep 1
 done
 
-# Verificar si el Slot 0 ya tiene la llave RSA generada
-if ! pkcs11-tool --module "$PKCS11_MODULE" --slot 0 --list-objects 2>/dev/null | grep -q "$RSA_LABEL"; then
-    echo "[UTIMACO-SIM] Inicializando Slot 0 con herramientas oficiales Utimaco (csadm + p11tool2)..."
+# Verificar si el Slot 0 ya tiene la llave RSA, el certificado X.509 y la llave pública PEM exportada
+if ! pkcs11-tool --module "$PKCS11_MODULE" --slot 0 --type cert --list-objects 2>/dev/null | grep -q "$RSA_LABEL" || [ ! -s "$EXPORT_DIR/pin_e2e_rsa_pub.pem" ]; then
+    echo "[UTIMACO-SIM] Inicializando Slot 0 con herramientas oficiales Utimaco (csadm + p11tool2 usando $ADMIN_KEY)..."
 
     # Limpiar usuarios previos del Slot 0 si existieran (según setup_device.sh oficial de Utimaco)
-    csadm Dev="$CRYPTOSERVER" LogonSign="ADMIN,$ADMIN_KEY" DeleteUser=USR_0000 DeleteUser=SO_0000 >/dev/null 2>&1 || true
+    csadm Dev="$CRYPTOSERVER" LogonSign="ADMIN,$ADMIN_KEY" DeleteUser=USR_0000 >/dev/null 2>&1 || true
+    csadm Dev="$CRYPTOSERVER" LogonSign="ADMIN,$ADMIN_KEY" DeleteUser=SO_0000 >/dev/null 2>&1 || true
 
-    # Crear Security Officer (SO_0000) e inicializar el Token en Slot 0
-    p11tool2 Login="ADMIN,$ADMIN_KEY" Force=1 Label="$TOKEN_LABEL" InitToken="$SO_PIN"
+    # Crear Security Officer (SO_0000) y Crypto Officer / User (USR_0000) en Slot 0
+    if p11tool2 Slot=0 Login="ADMIN,$ADMIN_KEY" Force=1 Label="$TOKEN_LABEL" InitToken="$SO_PIN"; then
+        p11tool2 Slot=0 LoginSO="$SO_PIN" InitPin="$CO_PIN"
+    else
+        echo "[UTIMACO-SIM] Inicializando usuarios SO_0000 y USR_0000 vía csadm (modo demo_LoadBalancing)..."
+        csadm Dev="$CRYPTOSERVER" LogonSign="ADMIN,$ADMIN_KEY" AddUser="SO_0000,0200{CXI_GROUP=SLOT_0000},hmacpwd,$SO_PIN"
+        csadm Dev="$CRYPTOSERVER" LogonSign="ADMIN,$ADMIN_KEY" AddUser="USR_0000,0002{CXI_GROUP=SLOT_0000},hmacpwd,$CO_PIN"
+    fi
 
-    # Crear Crypto Officer / User (USR_0000) con su PIN
-    p11tool2 LoginSO="$SO_PIN" InitPin="$CO_PIN"
-
-    echo "[UTIMACO-SIM] Generando par de llaves RSA-2048 ($RSA_LABEL) y certificado X.509 dentro del HSM Utimaco..."
+    echo "[UTIMACO-SIM] Generando par de llaves RSA-2048 ($RSA_LABEL) dentro del HSM Utimaco..."
     pkcs11-tool --module "$PKCS11_MODULE" \
         --slot 0 \
         --login --pin "$CO_PIN" \
@@ -102,6 +111,23 @@ if ! pkcs11-tool --module "$PKCS11_MODULE" --slot 0 --list-objects 2>/dev/null |
 
     openssl rsa -pubin -inform DER -in "$EXPORT_DIR/pin_e2e_rsa_pub.der" \
         -outform PEM -out "$EXPORT_DIR/pin_e2e_rsa_pub.pem"
+
+    echo "[UTIMACO-SIM] Asociando certificado X.509 en el Slot 0 para compatibilidad con Java SunPKCS11 KeyStore..."
+    openssl genrsa -out /tmp/hsm_ca.key 2048 2>/dev/null
+    openssl req -new -x509 -key /tmp/hsm_ca.key -subj "/CN=${RSA_LABEL}" -days 3650 -out /tmp/hsm_ca.crt 2>/dev/null
+    openssl req -new -key /tmp/hsm_ca.key -subj "/CN=${RSA_LABEL}" -out /tmp/hsm_ca.csr 2>/dev/null
+    openssl x509 -req -in /tmp/hsm_ca.csr -CA /tmp/hsm_ca.crt -CAkey /tmp/hsm_ca.key -CAcreateserial \
+        -force_pubkey "$EXPORT_DIR/pin_e2e_rsa_pub.pem" \
+        -outform DER -out "$EXPORT_DIR/pin_e2e_rsa_cert.der" -days 3650 2>/dev/null
+    rm -f /tmp/hsm_ca.key /tmp/hsm_ca.crt /tmp/hsm_ca.csr /tmp/hsm_ca.srl
+
+    pkcs11-tool --module "$PKCS11_MODULE" \
+        --slot 0 \
+        --login --pin "$CO_PIN" \
+        --write-object "$EXPORT_DIR/pin_e2e_rsa_cert.der" \
+        --type cert \
+        --id 01 \
+        --label "$RSA_LABEL"
 
     echo "[UTIMACO-SIM] Generando llave maestra local LMK AES-128 ($LMK_LABEL) dentro del HSM Utimaco..."
     pkcs11-tool --module "$PKCS11_MODULE" \

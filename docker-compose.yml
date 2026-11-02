@@ -29,11 +29,11 @@ services:
       - utimaco-devices:/opt/utimaco/sim5_linux/devices
       - ./docker/utimaco-sim/exported-keys:/exported-keys
     healthcheck:
-      test: ["CMD-SHELL", "/usr/local/bin/csadm Dev=3015@127.0.0.1 GetState || exit 1"]
+      test: ["CMD-SHELL", "/usr/local/bin/csadm Dev=3015@127.0.0.1 GetState && test -s /exported-keys/pin_e2e_rsa_pub.pem || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 15s
+      start_period: 25s
     restart: unless-stopped
 
   # ============================================================================
