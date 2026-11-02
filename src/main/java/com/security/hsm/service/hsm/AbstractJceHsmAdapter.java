@@ -6,12 +6,14 @@ import com.security.hsm.dto.PinPublicKeyResponse;
 import com.security.hsm.exception.HsmErrorCode;
 import com.security.hsm.exception.HsmOperationException;
 
+import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.OAEPParameterSpec;
 import javax.crypto.spec.PSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import java.security.MessageDigest;
 import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.spec.MGF1ParameterSpec;
@@ -187,8 +189,10 @@ public abstract class AbstractJceHsmAdapter implements HsmCryptoOperations {
     }
 
     /**
-     * Descifra el criptograma Base64 usando RSA/ECB/OAEPWithSHA-256AndMGF1Padding.
-     * Compatible tanto con WebCrypto API (navegadores/apps móviles) como con JCE/PKCS#11.
+     * Descifra el criptograma Base64 usando RSA-OAEP con SHA-256 y MGF1(SHA-256).
+     * En SunPKCS11 (donde P11RSACipher solo soporta NoPadding y PKCS1Padding),
+     * ejecuta la operación C^d mod n en el HSM vía CKM_RSA_X_509 (RSA/ECB/NoPadding)
+     * y decodifica el padding OAEP RFC 8017 con limpieza inmediata en memoria.
      */
     protected byte[] decryptRsaOaepSha256(String base64Ciphertext) {
         byte[] cipherBytes;
@@ -202,34 +206,135 @@ public abstract class AbstractJceHsmAdapter implements HsmCryptoOperations {
         }
 
         try {
-            Cipher rsaCipher;
-            OAEPParameterSpec oaepParams = new OAEPParameterSpec(
-                    "SHA-256",
-                    "MGF1",
-                    MGF1ParameterSpec.SHA256,
-                    PSource.PSpecified.DEFAULT
-            );
-
             if (getJceProviderName() != null) {
+                // Operación privada asimétrica ejecutada 100% dentro del HSM físico/simulador
+                Cipher rawRsaCipher = Cipher.getInstance("RSA/ECB/NoPadding", getJceProviderName());
+                rawRsaCipher.init(Cipher.DECRYPT_MODE, resolveRsaPrivateKey());
+                byte[] em = rawRsaCipher.doFinal(cipherBytes);
                 try {
-                    rsaCipher = Cipher.getInstance("RSA/ECB/OAEPPadding", getJceProviderName());
-                    rsaCipher.init(Cipher.DECRYPT_MODE, resolveRsaPrivateKey(), oaepParams);
-                } catch (Exception exTransform) {
-                    log.debug("[HSM-RSA] Intento con RSA/ECB/OAEPPadding falló ({}), reintentando con RSA/ECB/OAEPWithSHA-256AndMGF1Padding...", exTransform.getMessage());
-                    rsaCipher = Cipher.getInstance("RSA/ECB/OAEPWithSHA-256AndMGF1Padding", getJceProviderName());
-                    rsaCipher.init(Cipher.DECRYPT_MODE, resolveRsaPrivateKey());
+                    return decodeOaepSha256(em);
+                } finally {
+                    Iso9564PinBlockCodec.zeroize(em);
                 }
             } else {
-                rsaCipher = Cipher.getInstance("RSA/ECB/OAEPPadding");
+                Cipher rsaCipher = Cipher.getInstance("RSA/ECB/OAEPPadding");
+                OAEPParameterSpec oaepParams = new OAEPParameterSpec(
+                        "SHA-256",
+                        "MGF1",
+                        MGF1ParameterSpec.SHA256,
+                        PSource.PSpecified.DEFAULT
+                );
                 rsaCipher.init(Cipher.DECRYPT_MODE, resolveRsaPrivateKey(), oaepParams);
+                return rsaCipher.doFinal(cipherBytes);
             }
-
-            return rsaCipher.doFinal(cipherBytes);
         } catch (Exception e) {
             log.error("[HSM-RSA] Fallo al descifrar criptograma RSA-OAEP (longitud bytes={}, provider={}): {}",
                     cipherBytes.length, getJceProviderName(), e.getMessage(), e);
             throw new HsmOperationException(HsmErrorCode.HSM_RSA_DECRYPTION_FAILED, e);
         }
+    }
+
+    /**
+     * Decodifica el padding RSA-OAEP con SHA-256 y MGF1(SHA-256) según RFC 8017
+     * a partir del mensaje codificado (EM) devuelto por la operación CKM_RSA_X_509 en el HSM.
+     */
+    private byte[] decodeOaepSha256(byte[] rawEm) throws Exception {
+        byte[] em = rawEm;
+        if (em.length < 256) {
+            byte[] padded = new byte[256];
+            System.arraycopy(em, 0, padded, 256 - em.length, em.length);
+            em = padded;
+        }
+
+        int k = em.length;
+        int hLen = 32; // SHA-256 digest length
+        if (k < 2 * hLen + 2) {
+            throw new BadPaddingException("Decryption error: EM too short");
+        }
+        if (em[0] != 0x00) {
+            throw new BadPaddingException("Decryption error: First byte not 0x00");
+        }
+
+        byte[] maskedSeed = Arrays.copyOfRange(em, 1, 1 + hLen);
+        byte[] maskedDB = Arrays.copyOfRange(em, 1 + hLen, k);
+        byte[] seed = null;
+        byte[] db = null;
+        byte[] seedMask = null;
+        byte[] dbMask = null;
+
+        try {
+            seedMask = mgf1Sha256(maskedDB, hLen);
+            seed = new byte[hLen];
+            for (int i = 0; i < hLen; i++) {
+                seed[i] = (byte) (maskedSeed[i] ^ seedMask[i]);
+            }
+
+            dbMask = mgf1Sha256(seed, maskedDB.length);
+            db = new byte[maskedDB.length];
+            for (int i = 0; i < maskedDB.length; i++) {
+                db[i] = (byte) (maskedDB[i] ^ dbMask[i]);
+            }
+
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            byte[] lHash = md.digest(new byte[0]);
+
+            int diff = 0;
+            for (int i = 0; i < hLen; i++) {
+                diff |= (db[i] ^ lHash[i]);
+            }
+            if (diff != 0) {
+                throw new BadPaddingException("Decryption error: lHash mismatch");
+            }
+
+            int sepIdx = -1;
+            for (int i = hLen; i < db.length; i++) {
+                if (db[i] == 0x01) {
+                    sepIdx = i;
+                    break;
+                } else if (db[i] != 0x00) {
+                    throw new BadPaddingException("Decryption error: Invalid padding byte");
+                }
+            }
+
+            if (sepIdx == -1) {
+                throw new BadPaddingException("Decryption error: 0x01 separator not found");
+            }
+
+            return Arrays.copyOfRange(db, sepIdx + 1, db.length);
+        } finally {
+            Iso9564PinBlockCodec.zeroize(maskedSeed);
+            Iso9564PinBlockCodec.zeroize(maskedDB);
+            Iso9564PinBlockCodec.zeroize(seed);
+            Iso9564PinBlockCodec.zeroize(db);
+            Iso9564PinBlockCodec.zeroize(seedMask);
+            Iso9564PinBlockCodec.zeroize(dbMask);
+        }
+    }
+
+    private byte[] mgf1Sha256(byte[] seed, int maskLen) throws Exception {
+        MessageDigest md = MessageDigest.getInstance("SHA-256");
+        int hLen = 32;
+        byte[] mask = new byte[maskLen];
+        byte[] counterBytes = new byte[4];
+        int count = 0;
+        int generated = 0;
+        while (generated < maskLen) {
+            counterBytes[0] = (byte) ((count >> 24) & 0xFF);
+            counterBytes[1] = (byte) ((count >> 16) & 0xFF);
+            counterBytes[2] = (byte) ((count >> 8) & 0xFF);
+            counterBytes[3] = (byte) (count & 0xFF);
+
+            md.reset();
+            md.update(seed);
+            md.update(counterBytes);
+            byte[] hash = md.digest();
+
+            int toCopy = Math.min(hLen, maskLen - generated);
+            System.arraycopy(hash, 0, mask, generated, toCopy);
+            generated += toCopy;
+            count++;
+        }
+        return mask;
     }
 
     /**
