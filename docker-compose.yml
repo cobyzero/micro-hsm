@@ -1,0 +1,56 @@
+services:
+  # ============================================================================
+  # FASE 0: Simulador Oficial Utimaco SecurityServer / PaymentServer v6.6.0.0
+  # Construido directamente desde ext/u.trust-GP-HSM-Simulator_v6.6.0.0
+  # (bl_sim5 + csadm + p11tool2 + libcs_pkcs11_R3.so)
+  # ============================================================================
+  utimaco-simulator:
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: docker/utimaco-sim/Dockerfile
+    container_name: utimaco-hsm-simulator
+    hostname: utimaco-sim
+    ports:
+      - "3001:3001"   # Puerto oficial Utimaco Simulator (3001@utimaco-sim)
+    environment:
+      - CRYPTOSERVER=3001@127.0.0.1
+      - HSM_SLOT_ID=${HSM_SLOT_ID:-0}
+      - HSM_SO_PIN=${HSM_SO_PIN:-12345678}
+      - HSM_CRYPTO_OFFICER_PIN=${HSM_CRYPTO_OFFICER_PIN:-12345678}
+      - HSM_RSA_KEY_LABEL=${HSM_RSA_KEY_LABEL:-PIN_E2E_RSA_2048}
+      - HSM_LMK_KEY_LABEL=${HSM_LMK_KEY_LABEL:-LMK_PIN_AES_128}
+    volumes:
+      - utimaco-devices:/opt/utimaco/sim5_linux/devices
+      - ./docker/utimaco-sim/exported-keys:/exported-keys
+    restart: unless-stopped
+
+  # ============================================================================
+  # Microservicio Backend (Spring Boot 3 + Java 21 + Driver Utimaco PKCS#11 R3)
+  # ============================================================================
+  micro-hsm:
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: micro-hsm-service
+    ports:
+      - "8080:8080"
+    environment:
+      - HSM_MODE=PKCS11
+      - HSM_HOST=utimaco-sim
+      - HSM_PORT=3001
+      - HSM_DEVICE=3001@utimaco-sim
+      - HSM_SLOT_ID=0
+      - HSM_CRYPTO_OFFICER_PIN=12345678
+      - HSM_PKCS11_LIBRARY=/usr/lib/utimaco/libcs_pkcs11_R3.so
+      - HSM_RSA_KEY_ALIAS=PIN_E2E_RSA_2048
+      - HSM_LMK_KEY_ALIAS=LMK_PIN_AES_128
+    volumes:
+      - ./docker/utimaco-sim/exported-keys:/exported-keys:ro
+    depends_on:
+      - utimaco-simulator
+    restart: unless-stopped
+
+volumes:
+  utimaco-devices:

@@ -1,0 +1,31 @@
+spring:
+  application:
+    name: micro-hsm
+  cache:
+    type: simple
+
+server:
+  port: ${SERVER_PORT:8080}
+
+# ==============================================================================
+# Configuración Obligatoria Utimaco HSM en Docker (Modo PKCS#11)
+# ==============================================================================
+hsm:
+  mode: ${HSM_MODE:PKCS11}
+  host: ${HSM_HOST:utimaco-sim}
+  port: ${HSM_PORT:3001}
+  device: ${HSM_DEVICE:3001@utimaco-sim}
+  slot-id: ${HSM_SLOT_ID:0}
+  crypto-officer-pin: ${HSM_CRYPTO_OFFICER_PIN:12345678}
+  pkcs11-library: ${HSM_PKCS11_LIBRARY:/usr/lib/utimaco/libcs_pkcs11_R3.so}
+  pkcs11-config-path: ${HSM_PKCS11_CONFIG_PATH:/etc/utimaco/cs_pkcs11_R3.cfg}
+  rsa-key-alias: ${HSM_RSA_KEY_ALIAS:PIN_E2E_RSA_2048}
+  lmk-key-alias: ${HSM_LMK_KEY_ALIAS:LMK_PIN_AES_128}
+  key-id: ${HSM_KEY_ID:utimaco-pin-rsa-2048-v1}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
