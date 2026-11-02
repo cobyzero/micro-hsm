@@ -79,18 +79,24 @@ done
 if ! pkcs11-tool --module "$PKCS11_MODULE" --slot 0 --type cert --list-objects 2>/dev/null | grep -q "$RSA_LABEL" || [ ! -s "$EXPORT_DIR/pin_e2e_rsa_pub.pem" ]; then
     echo "[UTIMACO-SIM] Inicializando Slot 0 con herramientas oficiales Utimaco (csadm + p11tool2 usando $ADMIN_KEY)..."
 
-    # Limpiar usuarios previos del Slot 0 si existieran (según setup_device.sh oficial de Utimaco)
-    csadm Dev="$CRYPTOSERVER" LogonSign="ADMIN,$ADMIN_KEY" DeleteUser=USR_0000 >/dev/null 2>&1 || true
-    csadm Dev="$CRYPTOSERVER" LogonSign="ADMIN,$ADMIN_KEY" DeleteUser=SO_0000 >/dev/null 2>&1 || true
+    # Limpiar usuarios previos del Slot 0 si existieran (según SecurityServer_PKCS11_R3_DevGuide.pdf pág. 57)
+    csadm Dev="$CRYPTOSERVER" LogonSign="ADMIN,$ADMIN_KEY" DeleteUser=USR_0000 DeleteUser=SO_0000 >/dev/null 2>&1 || true
 
-    # Crear Security Officer (SO_0000) y Crypto Officer / User (USR_0000) en Slot 0
-    if p11tool2 Slot=0 Login="ADMIN,$ADMIN_KEY" Force=1 Label="$TOKEN_LABEL" InitToken="$SO_PIN"; then
-        p11tool2 Slot=0 LoginSO="$SO_PIN" InitPin="$CO_PIN"
-    else
-        echo "[UTIMACO-SIM] Inicializando usuarios SO_0000 y USR_0000 vía csadm (modo demo_LoadBalancing)..."
-        csadm Dev="$CRYPTOSERVER" LogonSign="ADMIN,$ADMIN_KEY" AddUser="SO_0000,0200{CXI_GROUP=SLOT_0000},hmacpwd,$SO_PIN"
-        csadm Dev="$CRYPTOSERVER" LogonSign="ADMIN,$ADMIN_KEY" AddUser="USR_0000,0002{CXI_GROUP=SLOT_0000},hmacpwd,$CO_PIN"
-    fi
+    # Paso 1 (Pág. 54): Crear Security Officer (SO_0000) con PIN inicial temporal 00000000 (queda en estado I[1])
+    p11tool2 Slot=0 Login="ADMIN,$ADMIN_KEY" Force=1 Label="$TOKEN_LABEL" InitToken=00000000
+
+    # Paso 2 (Pág. 54): Cambiar password de SO_0000 a $SO_PIN para pasar de estado I[1] a I[0]
+    # (En v6.6.0 es obligatorio; de lo contrario retorna 0xB0830091 mapeado a CKR_PIN_TOO_WEAK)
+    csadm Dev="$CRYPTOSERVER" LogonPass="SO_0000,00000000" ChangeUser="SO_0000,$SO_PIN"
+
+    # Paso 3 (Pág. 55): Crear Crypto Officer / User (USR_0000) con PIN inicial temporal 00000000 (queda en estado I[1])
+    p11tool2 Slot=0 LoginSO="$SO_PIN" InitPIN=00000000
+
+    # Paso 4 (Pág. 55): Cambiar password de USR_0000 a $CO_PIN para pasar de estado I[1] a I[0]
+    csadm Dev="$CRYPTOSERVER" LogonPass="USR_0000,00000000" ChangeUser="USR_0000,$CO_PIN"
+
+    echo "[UTIMACO-SIM] Usuarios PKCS#11 del Slot 0 activados (I[0]):"
+    csadm Dev="$CRYPTOSERVER" ListUser
 
     echo "[UTIMACO-SIM] Generando par de llaves RSA-2048 ($RSA_LABEL) dentro del HSM Utimaco..."
     pkcs11-tool --module "$PKCS11_MODULE" \
